@@ -1,0 +1,37 @@
+{
+  "name": "drip-raycast",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "title": "Drip",
+  "description": "Send files to your drip service from Finder or the clipboard",
+  "icon": "icon.png",
+  "author": "kylearrington",
+  "categories": ["Productivity", "Developer Tools"],
+  "commands": [
+    {
+      "name": "send-to-drip",
+      "title": "Send to drip",
+      "description": "Upload the clipboard image (or Finder selection) to drip",
+      "mode": "no-view"
+    }
+  ],
+  "preferences": [
+    { "name": "baseUrl", "title": "drip base URL", "type": "textfield", "required": true, "description": "Tailnet URL of the drip service" },
+    { "name": "token", "title": "Write token", "type": "password", "required": false, "description": "Optional DRIP_TOKEN" },
+    { "name": "ttl", "title": "TTL", "type": "textfield", "required": false, "default": "24h", "description": "e.g. 24h, 1h, 7d" }
+  ],
+  "scripts": {
+    "build:ray": "ray build -e dist",
+    "dev": "ray develop",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@raycast/api": "^1.104.21",
+    "mime-types": "^2.1.35"
+  },
+  "devDependencies": {
+    "@types/mime-types": "^2.1.4",
+    "typescript": "^5.6.0"
+  }
+}

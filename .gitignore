@@ -1,0 +1,8 @@
+node_modules
+dist
+*.tsbuildinfo
+.env
+data
+src/**/*.js
+src/**/*.d.ts
+packages/service/public/dl/

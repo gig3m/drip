@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>drip</title>
+<style>
+  :root { color-scheme: light dark; --bg:#0b0d10; --fg:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --card:#161b22; --border:#30363d; }
+  @media (prefers-color-scheme: light) { :root { --bg:#fbfcfd; --fg:#1f2328; --muted:#57606a; --accent:#0969da; --card:#fff; --border:#d0d7de; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:4rem 1.25rem 6rem; }
+  h1 { font-size:2.6rem; margin:0 0 .25rem; letter-spacing:-.02em; }
+  h1 .drop { color:var(--accent); }
+  .tag { color:var(--muted); font-size:1.1rem; margin:0 0 2.5rem; }
+  h2 { font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:2.5rem 0 .75rem; }
+  code, pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  pre { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:1rem 1.1rem; overflow-x:auto; margin:0 0 1rem; }
+  pre.hero { font-size:1.05rem; }
+  .muted { color:var(--muted); }
+  ul { padding-left:0; list-style:none; margin:0; }
+  li { margin:.4rem 0; }
+  li code { background:var(--card); border:1px solid var(--border); border-radius:5px; padding:.1rem .4rem; }
+  .note { border-left:3px solid var(--accent); padding:.5rem 0 .5rem 1rem; color:var(--muted); }
+  footer { margin-top:3.5rem; padding-top:1.5rem; border-top:1px solid var(--border); color:var(--muted); font-size:.85rem; }
+  a { color:var(--accent); }
+  .copywrap { position:relative; }
+  .copywrap pre { padding-right:7rem; }
+  .copybtn { position:absolute; top:.55rem; right:.55rem; min-height:2rem; min-width:6rem; text-align:center; font:inherit; font-size:.8rem; line-height:1; color:var(--muted); background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:.45rem .65rem; cursor:pointer; transition:color .15s ease-out, border-color .15s ease-out; }
+  .copybtn:hover { color:var(--fg); border-color:var(--muted); }
+  .copybtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .copybtn.copied { color:var(--accent); border-color:var(--accent); }
+  .copybtn.failed { color:var(--fg); border-color:var(--fg); }
+  @media (prefers-reduced-motion: reduce) { .copybtn { transition:none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="drop">drip</span></h1>
+  <p class="tag">Push a screenshot or file to your drip server, get back a short auto-expiring URL your agent can fetch.</p>
+
+  <h2>Install</h2>
+  <div class="copywrap">
+    <pre class="hero"><code id="install-cmd">curl -fsSL __DRIP_BASE_URL__/install.sh | sh</code></pre>
+    <button type="button" class="copybtn" data-copy="install-cmd" aria-live="polite">Copy</button>
+  </div>
+  <p class="muted">Installs the <code>drip</code> binary to <code>~/.local/bin</code>. macOS (Apple Silicon / Intel) and Linux (x64 / arm64).</p>
+
+  <h2>Use</h2>
+  <ul>
+    <li><code>drip ~/screenshot.png</code> — upload a file; the URL is printed and copied to your clipboard</li>
+    <li><code>drip a.png b.pdf</code> — upload several at once</li>
+    <li><code>drip clip</code> — upload the file(s) or image on the clipboard <span class="muted">(macOS, Wayland, X11)</span></li>
+    <li><code>drip list</code> — show recent uploads</li>
+    <li><code>drip get &lt;id&gt;</code> — download a file back into the current directory</li>
+  </ul>
+
+  <h2>For agents</h2>
+  <p class="note">The CLI is self-describing — run <code>drip --help</code> for the full command surface. An agent can push, list, and pull files with no knowledge of the HTTP API.</p>
+
+  <h2>Raycast</h2>
+  <p>Install the <strong>Send to drip</strong> Raycast script command — one hotkey to upload the clipboard file/image (or the Finder selection):</p>
+  <div class="copywrap">
+    <pre><code id="raycast-cmd">drip raycast</code></pre>
+    <button type="button" class="copybtn" data-copy="raycast-cmd" aria-live="polite">Copy</button>
+  </div>
+  <p class="muted">Then add <code>~/.raycast-scripts</code> once under Raycast → Settings → Extensions → Script Commands → “Add Directories.” Prefer to do it by hand? <a href="/raycast/send-to-drip.sh">Download the script</a> and drop it in a Raycast script-commands folder.</p>
+
+  <h2>How it works</h2>
+  <p>You push bytes to drip; it stores them and returns a short <code>/f/&lt;id&gt;</code> URL. An agent (or <code>curl</code>, or a browser) fetches that URL directly, or discovers recent files with <code>drip list</code>. Files auto-delete after their TTL (default 24h, max 7d).</p>
+
+  <footer>
+    drip · self-hosted · <a href="/healthz">/healthz</a> · binaries at <a href="/dl/SHA256SUMS">/dl/SHA256SUMS</a>
+  </footer>
+</main>
+<script>
+(function () {
+  var RESET_MS = 1600;
+  var MOD = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "\u2318C" : "Ctrl-C";
+
+  // navigator.clipboard is undefined outside a secure context, and drip also
+  // answers over plain HTTP on the LAN address — so this path is load-bearing,
+  // not a legacy-browser nicety.
+  function execCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:absolute;left:-9999px;top:0";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  // Last resort: put the command in the user's selection so the keystroke we
+  // name in the label actually works.
+  function selectNode(node) {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(node);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) { /* nothing better to offer */ }
+  }
+
+  // aria-label overrides the button's text for assistive tech, so it has to move
+  // with the state or the live region announces a stale name.
+  function setState(btn, label, cls) {
+    btn.className = cls ? "copybtn " + cls : "copybtn";
+    btn.textContent = label;
+    btn.setAttribute("aria-label", label + ": " + btn.commandText);
+  }
+
+  function flash(btn, label, cls) {
+    setState(btn, label, cls);
+    clearTimeout(btn.resetTimer);
+    btn.resetTimer = setTimeout(function () { setState(btn, "Copy", ""); }, RESET_MS);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".copybtn"), function (btn) {
+    var source = document.getElementById(btn.getAttribute("data-copy"));
+    if (!source) return btn.remove();
+    btn.commandText = source.textContent.trim();
+    setState(btn, "Copy", "");
+
+    btn.addEventListener("click", function () {
+      var text = source.textContent.trim();
+      var settle = function (ok) {
+        if (ok) return flash(btn, "Copied", "copied");
+        selectNode(source);
+        flash(btn, "Press " + MOD, "failed");
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () { settle(true); }, function () { settle(execCopy(text)); });
+      } else {
+        settle(execCopy(text));
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
