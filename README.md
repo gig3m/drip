@@ -2,6 +2,8 @@
 
 Push a screenshot or file from your laptop to a small self-hosted server and get back a short, auto-expiring URL that a coding agent on another machine can fetch.
 
+![drip tui: recent drips with their size and time left, and the selected one's details](docs/tui.png)
+
 ## Why
 
 Coding agents increasingly run somewhere other than the machine in front of you: a homelab box, a dev VM, a remote workstation you SSH into. When you want to show one a screenshot, a log file or a PDF, the usual options are clumsy. You mount an SMB share, `scp` the file over, or paste it into a chat window that the agent cannot read.
