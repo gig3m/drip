@@ -56,14 +56,14 @@ docker compose up -d --build
 
 The image build cross-compiles the `drip` CLI for macOS and Linux with `DRIP_BASE_URL` compiled in as its default server, so the binaries it serves at `/dl/` work with no configuration.
 
-Compose publishes the service on `127.0.0.1:8787` only. To reach it from your other machines, put something in front of it. With Tailscale:
+Compose publishes the service on `127.0.0.1:8787` by default. To reach it from your other machines, put something in front of it. With Tailscale:
 
 ```bash
 tailscale serve --bg 8787
 # serves https://<machine>.<your-tailnet>.ts.net -> 127.0.0.1:8787
 ```
 
-Set `DRIP_BASE_URL` to the URL `tailscale serve` prints, then rebuild (`docker compose up -d --build`) so the served binaries pick it up. A reverse proxy on your LAN works as well. If you use one, raise its request body limit to at least `DRIP_MAX_SIZE`.
+Set `DRIP_BASE_URL` to the URL `tailscale serve` prints, then rebuild (`docker compose up -d --build`) so the served binaries pick it up. A reverse proxy on your LAN works as well: set `DRIP_BIND` to the host address it reaches, and raise its request body limit to at least `DRIP_MAX_SIZE`.
 
 ### Configuration
 
@@ -74,6 +74,7 @@ Set `DRIP_BASE_URL` to the URL `tailscale serve` prints, then rebuild (`docker c
 | `DRIP_DEFAULT_TTL` | `24h` | Lifetime of an upload when the client does not ask for one. |
 | `DRIP_MAX_TTL` | `168h` | Longest TTL a client may request. Longer requests are clamped to this value. |
 | `DRIP_MAX_SIZE` | `100mb` | Maximum size of each uploaded file. |
+| `DRIP_BIND` | `127.0.0.1` | Host address the published port binds to. Read by `docker-compose.yml`. |
 | `DRIP_SWEEP_INTERVAL` | `60s` | How often expired files are deleted from disk. |
 | `DRIP_DATA_DIR` | `/data` | Storage directory. It must match the volume mount in `docker-compose.yml`. |
 | `PORT` | `8787` | Listen port inside the container. |

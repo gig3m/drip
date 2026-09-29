@@ -9,8 +9,9 @@ services:
         DRIP_BAKED_BASE_URL: "${DRIP_BASE_URL:?set DRIP_BASE_URL in .env}"
     env_file: .env
     ports:
-      # Loopback only; expose with `tailscale serve --bg 8787` (or your reverse proxy).
-      - "127.0.0.1:8787:8787"
+      # Loopback by default; expose with `tailscale serve --bg 8787`, or set
+      # DRIP_BIND in .env to the address your reverse proxy reaches.
+      - "${DRIP_BIND:-127.0.0.1}:8787:8787"
     volumes:
       - drip-data:/data
     restart: unless-stopped
