@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: packages/service/Dockerfile
       args:
-        DRIP_VERSION: "1.3.2"
+        DRIP_VERSION: "1.4.0"
         # The CLI binaries served at /dl/ default to this server (read from .env).
         DRIP_BAKED_BASE_URL: "${DRIP_BASE_URL:?set DRIP_BASE_URL in .env}"
     env_file: .env

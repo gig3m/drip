@@ -1,17 +1,22 @@
 import { describe, it, expect } from "vitest";
 import type { FileListItem } from "@drip/shared";
 import type { Key } from "./term.js";
-import { initialState, reduce, withItems, removeItem, visibleItems, safeName, withStatus, clearStatus, type State, type Step } from "./state.js";
+import {
+  advance, animating, ANIM_FRAMES, clearStatus, initialState, layout, reduce, removeItem, replaceItem, safeName,
+  startAnim, TTLS, visibleItems, withItems, withStatus, type State, type Step,
+} from "./state.js";
 
-const item = (id: string, filename: string): FileListItem => ({
+const item = (id: string, filename: string, o: Partial<FileListItem> = {}): FileListItem => ({
   id, filename, content_type: "image/png", url: `https://h/f/${id}/${filename}`, size: 10,
-  created_at: "2026-09-22T00:00:00.000Z", expires_at: "2026-09-23T00:00:00.000Z",
+  created_at: "2026-09-22T00:00:00.000Z", expires_at: "2026-09-23T00:00:00.000Z", ...o,
 });
+const NOW = Date.parse("2026-09-22T12:00:00.000Z");
 const ch = (c: string): Key => ({ name: "char", ch: c });
 const k = (name: Key["name"]): Key => ({ name });
 const H = 3;
+/** Flat (ungrouped), so selection index == display line. */
 const loaded = (n = 5): State =>
-  withItems(initialState(), Array.from({ length: n }, (_, i) => item(`id${i}`, `file${i}.png`)), H);
+  ({ ...withItems(initialState(), Array.from({ length: n }, (_, i) => item(`id${i}`, `file${i}.png`)), H, NOW), grouping: "none" });
 
 function press(s: State, ...keys: Key[]): Step {
   let step: Step = { state: s };
@@ -149,5 +154,99 @@ describe("status", () => {
   });
   it("an action on an empty list is a warning", () => {
     expect(press(withItems(initialState(), [], H), ch("y")).state.statusKind).toBe("warn");
+  });
+});
+
+describe("grouping", () => {
+  const ago = (ms: number) => new Date(NOW - ms).toISOString();
+  const mixed = () => withItems(initialState(), [
+    item("t1", "a.txt", { content_type: "text/plain", created_at: ago(60_000) }),
+    item("i1", "b.png", { created_at: ago(2 * 3600_000) }),
+    item("o1", "c.pdf", { content_type: "application/pdf", created_at: ago(30 * 3600_000) }),
+    item("i2", "d.png", { created_at: ago(5 * 60_000) }),
+  ], 10, NOW);
+
+  it("groups by time by default, newest group first, items keep server order inside a group", () => {
+    const { order, lines } = layout(mixed());
+    expect(lines.map((l) => (l.kind === "group" ? `[${l.label} ${l.count}]` : l.item.id))).toEqual(
+      ["[last hour 2]", "t1", "i2", "[earlier today 1]", "i1", "[before today 1]", "o1"]);
+    expect(order.map((it) => it.id)).toEqual(["t1", "i2", "i1", "o1"]);
+  });
+
+  it("cuts the time groups against when the list was fetched, not the wall clock", () => {
+    const later = { ...mixed(), listedAt: NOW + 3 * 86_400_000 };
+    expect(layout(later).lines.filter((l) => l.kind === "group").map((l) => l.kind === "group" && l.label)).toEqual(["before today"]);
+  });
+
+  it("tab cycles time → type → none → time, keeping the selected drip", () => {
+    let s = press(mixed(), ch("j"), ch("j")).state; // i1
+    s = press(s, k("tab")).state;
+    expect(s).toMatchObject({ grouping: "type", status: "grouped by type" });
+    expect(layout(s).lines.map((l) => (l.kind === "group" ? l.label : l.item.id))).toEqual(["images", "i1", "i2", "text", "t1", "other", "o1"]);
+    expect(visibleItems(s)[s.selected]!.id).toBe("i1");
+    s = press(s, k("tab")).state;
+    expect(s).toMatchObject({ grouping: "none", status: "ungrouped" });
+    expect(visibleItems(s)[s.selected]!.id).toBe("i1");
+    expect(press(s, k("tab")).state.grouping).toBe("time");
+  });
+
+  it("filters within groups and drops empty ones", () => {
+    const s = { ...mixed(), filter: ".png" };
+    expect(layout(s).lines.map((l) => (l.kind === "group" ? l.label : l.item.id))).toEqual(["last hour", "i2", "earlier today", "i1"]);
+  });
+
+  it("scrolls by display line and shows a group's header when its first drip is at the top", () => {
+    const go = (s: State, ...keys: Key[]) => keys.reduce((st, key) => reduce(st, key, 2).state, s);
+    let s = go(mixed(), ch("j"), ch("j"), ch("j")); // o1: line 6
+    expect(s.scroll).toBe(5);
+    s = go(s, ch("k"), ch("k")); // i2: line 2; the line above is t1, not a header
+    expect(s.scroll).toBe(2);
+    expect(go(s, ch("k")).scroll).toBe(0); // t1 is first in its group: bring the header along
+  });
+});
+
+describe("ttl", () => {
+  const one = (left: number) => withItems(initialState(), [item("a", "a.png", { expires_at: new Date(NOW + left).toISOString() })], H, NOW);
+
+  it("t opens the picker on the shortest choice that does not shorten the drip", () => {
+    expect(press(one(23 * 3600_000), ch("t")).state).toMatchObject({ mode: "ttl", ttlIdx: 2 });
+    expect(press(one(30 * 60_000), ch("t")).state.ttlIdx).toBe(0);
+    expect(press(one(30 * 86_400_000), ch("t")).state.ttlIdx).toBe(TTLS.length - 1);
+  });
+
+  it("arrows, h/l and digits pick; enter sets; esc leaves it alone", () => {
+    const s = press(one(3600_000), ch("t")).state;
+    expect(press(s, k("right"), ch("l")).state.ttlIdx).toBe(2);
+    expect(press(s, k("left"), ch("h")).state.ttlIdx).toBe(0);
+    expect(press(s, ch("4")).state.ttlIdx).toBe(3);
+    expect(press(s, ch("9")).state.ttlIdx).toBe(0);
+    const set = press(s, ch("5"), k("enter"));
+    expect(set.state.mode).toBe("list");
+    expect(set.effect).toEqual({ kind: "set-ttl", item: s.items[0], ttl: "7d" });
+    expect(press(s, k("esc")).state).toMatchObject({ mode: "list", status: "ttl unchanged" });
+  });
+
+  it("replaceItem swaps in the server's copy and keeps the selection", () => {
+    const s = press(loaded(3), ch("j")).state;
+    const next = replaceItem(s, { ...s.items[1]!, expires_at: "2027-01-01T00:00:00.000Z" }, H);
+    expect(next.items[1]!.expires_at).toBe("2027-01-01T00:00:00.000Z");
+    expect(next.selected).toBe(1);
+  });
+});
+
+describe("animation", () => {
+  it("advance runs a one-shot animation to its end, and always ticks the spinner", () => {
+    let s = startAnim(loaded(), "copy");
+    for (let i = 0; i < ANIM_FRAMES.copy - 1; i++) s = advance(s);
+    expect(s.anim).toEqual({ kind: "copy", frame: ANIM_FRAMES.copy - 1 });
+    s = advance(s);
+    expect(s.anim).toBeNull();
+    expect(s.tick).toBe(ANIM_FRAMES.copy);
+  });
+  it("is animating while loading, busy or mid-animation", () => {
+    expect(animating(initialState())).toBe(true);
+    expect(animating(loaded())).toBe(false);
+    expect(animating(withStatus(loaded(), "working…", "busy"))).toBe(true);
+    expect(animating(startAnim(loaded(), "refresh"))).toBe(true);
   });
 });

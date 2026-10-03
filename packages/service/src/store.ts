@@ -77,6 +77,15 @@ export class Store {
       .all(this.clock(), n) as FileMeta[];
   }
 
+  /** Re-arm a live drip to expire `ttlMs` from now. Null when it is unknown or already expired. */
+  setExpiry(id: string, ttlMs: number): FileMeta | null {
+    if (!isValidId(id)) return null;
+    const now = this.clock();
+    const info = this.db.prepare(`UPDATE files SET expires_at = ? WHERE id = ? AND expires_at > ?`).run(now + ttlMs, id, now);
+    if (info.changes === 0) return null;
+    return this.db.prepare(`SELECT * FROM files WHERE id = ?`).get(id) as FileMeta;
+  }
+
   delete(id: string): boolean {
     if (!isValidId(id)) return false;
     const path = this.pathFor(id);

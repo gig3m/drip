@@ -117,6 +117,38 @@ describe("app", () => {
     expect(withAuth.status).not.toBe(401);
   });
 
+  it("PATCH /f/:id?ttl= resets the expiry from now, capped at the max ttl", async () => {
+    const app = createApp(store, cfg());
+    const up = await (await app.request("/upload", { method: "POST", body: multipart([{ name: "a.txt", type: "text/plain", bytes: [1] }]) })).json();
+    now += 400;
+    const res = await app.request(`/f/${up.id}?ttl=5s`, { method: "PATCH" });
+    expect(res.status).toBe(200);
+    const j = await res.json();
+    expect(j).toMatchObject({ id: up.id, filename: "a.txt", url: up.url });
+    expect(j.expires_at).toBe(new Date(now + 5000).toISOString());
+    expect(j.created_at).toBe(new Date(now - 400).toISOString());
+    const capped = await (await app.request(`/f/${up.id}?ttl=1d`, { method: "PATCH" })).json();
+    expect(capped.expires_at).toBe(new Date(now + 10_000).toISOString());
+  });
+
+  it("PATCH needs a valid ttl and a live id", async () => {
+    const app = createApp(store, cfg());
+    const up = await (await app.request("/upload", { method: "POST", body: multipart([{ name: "a", type: "text/plain", bytes: [1] }]) })).json();
+    expect((await app.request(`/f/${up.id}`, { method: "PATCH" })).status).toBe(400);
+    expect((await app.request(`/f/${up.id}?ttl=soon`, { method: "PATCH" })).status).toBe(400);
+    expect((await app.request(`/f/${up.id}?ttl=0s`, { method: "PATCH" })).status).toBe(400);
+    expect((await app.request("/f/AAAAAAAAAAAAAAAA?ttl=1h", { method: "PATCH" })).status).toBe(404);
+    now += 1000;
+    expect((await app.request(`/f/${up.id}?ttl=1h`, { method: "PATCH" })).status).toBe(404);
+  });
+
+  it("PATCH token gate: 401 without auth, not 401 with correct bearer", async () => {
+    const app = createApp(store, cfg({ token: "sekret" }));
+    expect((await app.request("/f/anything?ttl=1h", { method: "PATCH" })).status).toBe(401);
+    const withAuth = await app.request("/f/anything?ttl=1h", { method: "PATCH", headers: { authorization: "Bearer sekret" } });
+    expect(withAuth.status).not.toBe(401);
+  });
+
   it("invalid ttl returns 400", async () => {
     const res = await createApp(store, cfg()).request("/upload?ttl=garbage", { method: "POST", body: multipart([{ name: "a", type: "text/plain", bytes: [1] }]) });
     expect(res.status).toBe(400);

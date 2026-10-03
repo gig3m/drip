@@ -16,6 +16,7 @@ function deps(over: Partial<AppDeps> = {}, client: Partial<AppDeps["client"]> = 
       list: vi.fn(async () => [item("a", "a.png")]),
       get: vi.fn(async () => ({ bytes: BYTES, filename: "x", contentType: "image/png; q=1" })),
       delete: vi.fn(async () => {}),
+      setTtl: vi.fn(async (id: string) => ({ ...item(id, `${id}.png`), expires_at: "2026-09-30T00:00:00.000Z" })),
       ...client,
     },
     copyText: vi.fn(() => true),
@@ -23,8 +24,8 @@ function deps(over: Partial<AppDeps> = {}, client: Partial<AppDeps["client"]> = 
     exists: vi.fn(() => false),
     writeFile: vi.fn(),
     home: "/home/u",
-    color: false,
-    now: () => 0,
+    look: { color: "none", icons: false, animations: false },
+    now: () => Date.parse("2026-09-22T12:00:00.000Z"),
     ...over,
   };
 }
@@ -52,7 +53,7 @@ describe("expandHome", () => {
 
 describe("runEffect", () => {
   it("copy-url reports success and failure", async () => {
-    expect((await runEffect({ kind: "copy-url", item: item("a", "a.png") }, withA(), deps(), H)).status).toBe("copied url");
+    expect((await runEffect({ kind: "copy-url", item: item("a", "a.png") }, withA(), deps(), H)).status).toBe("copied url · paste it to your agent");
     const d = deps({ copyText: vi.fn(() => false) });
     expect((await runEffect({ kind: "copy-url", item: item("a", "a.png") }, withA(), d, H)).status).toBe("clipboard unavailable — https://h/f/a/a.png");
   });
@@ -118,9 +119,35 @@ describe("runEffect", () => {
     const d = deps();
     const s = await runEffect({ kind: "refresh" }, initialState(), d, H);
     expect(d.client.list).toHaveBeenCalledWith(LIST_LIMIT);
-    expect(s).toMatchObject({ loading: false, status: "1 drips" });
-    const bad = deps({}, { list: vi.fn(async () => { throw new Error("boom"); }) });
-    expect(await runEffect({ kind: "refresh" }, initialState(), bad, H)).toMatchObject({ loading: false, status: "boom", statusKind: "err" });
+    expect(s).toMatchObject({ loading: false, online: true, status: "1 drips synced", statusKind: "ok", anim: null });
+    const bad = deps({}, { list: vi.fn(async () => { throw new Error("fetch failed"); }) });
+    expect(await runEffect({ kind: "refresh" }, initialState(), bad, H))
+      .toMatchObject({ loading: false, online: false, status: "fetch failed", statusKind: "err" });
+    // The server answering with an error is still a server that answered.
+    const refused = deps({}, { list: vi.fn(async () => { throw new DripError(500, "list failed: 500"); }) });
+    expect((await runEffect({ kind: "refresh" }, initialState(), refused, H)).online).toBeUndefined();
+  });
+
+  it("set-ttl swaps in the server's copy and says when it now expires", async () => {
+    const d = deps();
+    const s = await runEffect({ kind: "set-ttl", item: item("a", "a.png"), ttl: "7d" }, withA(), d, H);
+    expect(d.client.setTtl).toHaveBeenCalledWith("a", "7d");
+    expect(s.items.find((i) => i.id === "a")!.expires_at).toBe("2026-09-30T00:00:00.000Z");
+    expect(s).toMatchObject({ status: "a.png now expires in 7d", statusKind: "ok" });
+    // A server with a lower max ttl caps it: report what it actually did.
+    const capped = deps({}, { setTtl: vi.fn(async () => ({ ...item("a", "a.png"), expires_at: "2026-09-24T12:00:00.000Z" })) });
+    expect((await runEffect({ kind: "set-ttl", item: item("a", "a.png"), ttl: "7d" }, withA(), capped, H)).status).toBe("a.png now expires in 2d");
+    const g = await runEffect({ kind: "set-ttl", item: item("a", "a.png"), ttl: "1h" }, withA(), deps({}, { setTtl: vi.fn(gone) }), H);
+    expect(g).toMatchObject({ status: "expired or already deleted" });
+    expect(g.items.map((i) => i.id)).toEqual(["b"]);
+  });
+
+  it("starts the refresh reveal and the copy splash only when animations are on", async () => {
+    const on = deps({ look: { color: "none", icons: false, animations: true } });
+    expect((await runEffect({ kind: "refresh" }, initialState(), on, H)).anim).toEqual({ kind: "refresh", frame: 0 });
+    expect((await runEffect({ kind: "copy-url", item: item("a", "a.png") }, withA(), on, H)).anim).toEqual({ kind: "copy", frame: 0 });
+    expect((await runEffect({ kind: "copy-contents", item: item("p", "p.pdf", "application/pdf") }, withA(), on, H)).anim).toBeNull();
+    expect((await runEffect({ kind: "copy-url", item: item("a", "a.png") }, withA(), deps(), H)).anim).toBeNull();
   });
 });
 
@@ -148,6 +175,21 @@ describe("runTui", () => {
     press({ name: "char", ch: "y" }, { name: "char", ch: "q" });
     await done;
     expect(d.copyText).toHaveBeenCalledWith("https://h/f/a/a.png");
+  });
+
+  it("animates the refresh with a frame timer that stops when nothing moves", async () => {
+    const { term, writes, press } = fakeTerm();
+    const done = runTui(term, deps({ look: { color: "none", icons: false, animations: true } }), "h");
+    await tick();
+    const plain = (w: string) => w.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
+    expect(plain(writes.at(-1)!)).not.toContain("a.png"); // frame 0: rows still hidden
+    await new Promise((r) => setTimeout(r, 70 * 16));
+    expect(plain(writes.at(-1)!)).toContain("a.png");
+    const settled = writes.length;
+    await new Promise((r) => setTimeout(r, 200));
+    expect(writes.length).toBe(settled);
+    press({ name: "char", ch: "q" });
+    await done;
   });
 
   it("fades a finished status after fadeMs", async () => {

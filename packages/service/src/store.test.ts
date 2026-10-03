@@ -45,6 +45,26 @@ describe("Store", () => {
     s.close();
   });
 
+  it("setExpiry moves expires_at to now + ttl and returns the new meta", () => {
+    const s = new Store(dir, clock);
+    const m = s.put(new Uint8Array([1]), "a", "text/plain", 1000);
+    now += 500;
+    const r = s.setExpiry(m.id, 5000);
+    expect(r).toMatchObject({ id: m.id, created_at: m.created_at, expires_at: now + 5000 });
+    expect(s.get(m.id)!.meta.expires_at).toBe(now + 5000);
+    s.close();
+  });
+
+  it("setExpiry returns null for unknown, invalid or already-expired ids", () => {
+    const s = new Store(dir, clock);
+    const m = s.put(new Uint8Array([1]), "a", "text/plain", 1000);
+    expect(s.setExpiry("missing", 1000)).toBeNull();
+    expect(s.setExpiry("../../etc/passwd", 1000)).toBeNull();
+    now += 1000;
+    expect(s.setExpiry(m.id, 1000)).toBeNull();
+    s.close();
+  });
+
   it("sweep deletes only expired entries and returns the count", () => {
     const s = new Store(dir, clock);
     const a = s.put(new Uint8Array([1]), "a", "text/plain", 1000);   // expires 1_001_000

@@ -1,16 +1,16 @@
 import type { ReadStream, WriteStream } from "node:tty";
 
 export type KeyName =
-  | "up" | "down" | "pageup" | "pagedown" | "home" | "end"
+  | "up" | "down" | "left" | "right" | "pageup" | "pagedown" | "home" | "end"
   | "enter" | "esc" | "backspace" | "tab" | "ctrl-c" | "ctrl-u" | "char";
 
 export interface Key { name: KeyName; ch?: string }
 
 const CSI: Record<string, KeyName> = {
-  A: "up", B: "down", H: "home", F: "end",
+  A: "up", B: "down", C: "right", D: "left", H: "home", F: "end",
   "1~": "home", "7~": "home", "4~": "end", "8~": "end", "5~": "pageup", "6~": "pagedown",
 };
-const SS3: Record<string, KeyName> = { A: "up", B: "down", H: "home", F: "end" };
+const SS3: Record<string, KeyName> = { A: "up", B: "down", C: "right", D: "left", H: "home", F: "end" };
 const CONTROL: Record<string, KeyName> = {
   "\r": "enter", "\n": "enter", "\x7f": "backspace", "\b": "backspace", "\t": "tab", "\x03": "ctrl-c", "\x15": "ctrl-u",
 };

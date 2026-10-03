@@ -6,6 +6,7 @@ const names = (s: string) => decodeKeys(s).map((k) => (k.name === "char" ? k.ch 
 describe("decodeKeys", () => {
   it("decodes arrows in CSI and SS3 form", () => {
     expect(names("\x1b[A\x1b[B\x1bOA\x1bOB")).toEqual(["up", "down", "up", "down"]);
+    expect(names("\x1b[D\x1b[C\x1bOD\x1bOC")).toEqual(["left", "right", "left", "right"]);
   });
   it("decodes paging and home/end variants", () => {
     expect(names("\x1b[5~\x1b[6~\x1b[H\x1b[F\x1b[1~\x1b[4~")).toEqual(["pageup", "pagedown", "home", "end", "home", "end"]);

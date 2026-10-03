@@ -64,6 +64,15 @@ export class DripClient {
     return { bytes, filename, contentType };
   }
 
+  /** Re-arm a drip to expire `ttl` (e.g. "24h") from now. The server caps it at its max ttl. */
+  async setTtl(id: string, ttl: string): Promise<FileListItem> {
+    const url = new URL(`/f/${encodeURIComponent(id)}`, this.cfg.baseUrl);
+    url.searchParams.set("ttl", ttl);
+    const res = await fetch(url, { method: "PATCH", headers: this.headers() });
+    if (!res.ok) throw new DripError(res.status, `ttl failed: ${res.status}`);
+    return (await res.json()) as FileListItem;
+  }
+
   async delete(id: string): Promise<void> {
     const url = new URL(`/f/${encodeURIComponent(id)}`, this.cfg.baseUrl);
     const res = await fetch(url, { method: "DELETE", headers: this.headers() });

@@ -72,7 +72,7 @@ Set `DRIP_BASE_URL` to the URL `tailscale serve` prints, then rebuild (`docker c
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DRIP_BASE_URL` | *(required)* | Public URL of this server. It is used to build returned links, the install script and the CLI's default server. |
-| `DRIP_TOKEN` | *(unset)* | If set, `POST /upload` and `DELETE /f/:id` require `Authorization: Bearer <token>`. |
+| `DRIP_TOKEN` | *(unset)* | If set, `POST /upload`, `PATCH /f/:id` and `DELETE /f/:id` require `Authorization: Bearer <token>`. |
 | `DRIP_DEFAULT_TTL` | `24h` | Lifetime of an upload when the client does not ask for one. |
 | `DRIP_MAX_TTL` | `168h` | Longest TTL a client may request. Longer requests are clamped to this value. |
 | `DRIP_MAX_SIZE` | `100mb` | Maximum size of each uploaded file. |
@@ -112,10 +112,21 @@ Clipboard support depends on your platform:
 | `drip clip` | Upload the file(s) or image on the clipboard. |
 | `drip list [-n N] [--json]` | List the N most recent drips (default 20). |
 | `drip get <id\|url> [-o PATH]` | Download a drip into the current directory. `-o -` writes it to stdout. |
-| `drip tui` (or bare `drip`) | Open the interactive browser. Use `⏎`/`y` to copy the URL, `c` to copy the contents, `s`/`S` to save or save as, `d` to delete, `/` to filter, `r` to refresh and `q` to quit. |
+| `drip tui` (or bare `drip`) | Open the interactive browser. Use `⏎`/`y` to copy the URL, `c` to copy the contents, `s`/`S` to save or save as, `t` to change how long a drip lives, `d` to delete, `/` to filter, `⇥` to group by time, by type or not at all, `r` to refresh and `q` to quit. The details pane includes a QR code of the URL when the terminal is tall enough. |
 | `drip raycast [--dir P]` | Install the Raycast "Send to drip" script command. |
 | `drip upgrade` | Reinstall the latest binary from your server. |
 | `drip --help` | Show full usage. The output is written so an agent can learn the tool from it. |
+
+### How the browser looks
+
+`drip tui` uses [Nerd Font](https://www.nerdfonts.com/) glyphs for file-type icons and its header. If your terminal font doesn't have them, you'll see empty boxes instead. These environment variables change its look:
+
+| Variable | Effect |
+|----------|--------|
+| `DRIP_ICONS=0` | Use plain Unicode instead of Nerd Font glyphs. |
+| `DRIP_PALETTE=ansi` | Use your terminal theme's 16 colours instead of drip's own 24-bit palette. That palette is used when `COLORTERM` is `truecolor` or `24bit`, and it is tuned for dark backgrounds, so this setting suits light themes. `DRIP_PALETTE=truecolor` forces the 24-bit palette. |
+| `DRIP_ANIMATIONS=0` | Turn off the spinner, the row-by-row reveal after a refresh, and the flash after a copy. |
+| `NO_COLOR=1` | No colour at all. Bold and reverse video are kept. |
 
 ## 3. Raycast (macOS, optional)
 
@@ -144,6 +155,7 @@ Any agent that can make an HTTP request can fetch it. If `drip` is installed on 
 | `POST /upload[?ttl=12h]` | token if set | Upload a multipart body with one or more `file` fields, or a raw body with `?name=` and a `Content-Type`. Returns `{id, url, filename, size, content_type, expires_at}`, or `{items: [...]}` for multiple files. |
 | `GET /f/:id/:name`, `GET /f/:id` | none | Fetch a file. `:name` is cosmetic. |
 | `DELETE /f/:id` | token if set | Delete a file. |
+| `PATCH /f/:id?ttl=3d` | token if set | Make a live file expire `ttl` from now. This is capped at `DRIP_MAX_TTL`, and it can shorten the expiry as well as extend it. Returns the file as listed by `GET /files`. |
 | `GET /files[?limit=N]` | none | List unexpired files, newest first (default 20, maximum 200). |
 | `GET /healthz` | none | Liveness check. |
 | `GET /`, `/install.sh`, `/dl/*`, `/raycast/send-to-drip.sh` | none | Landing page, installer, CLI binaries with `SHA256SUMS`, and the Raycast script. |

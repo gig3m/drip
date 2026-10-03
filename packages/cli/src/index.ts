@@ -9,6 +9,7 @@ import { contentTypeFor, extensionFor } from "./mime.js";
 import { defaultDeps, readClipboard, writeClipboardBytes, writeClipboardText } from "./clipboard.js";
 import { openTerminal } from "./tui/term.js";
 import { runTui } from "./tui/app.js";
+import { lookFromEnv } from "./tui/render.js";
 import { route } from "./args.js";
 import { humanSize, humanAge } from "./format.js";
 
@@ -22,7 +23,7 @@ usage:
   drip clip                 upload the file(s) or image on the clipboard
   drip list [-n N] [--json] list the N most recent files (default 20)
   drip get <id|url> [-o P]  download a file to CWD; -o P writes to P, -o - to stdout
-  drip tui                  browse current drips: copy url/contents, save, delete (alias: browse)
+  drip tui                  browse current drips: copy url/contents, save, change ttl, delete (alias: browse)
   drip send <file>...       alias of the bare upload form
   drip raycast [--dir P]    install the "Send to drip" Raycast script command
   drip upgrade              reinstall the latest drip
@@ -123,7 +124,7 @@ async function main(): Promise<void> {
           writeFile: (p, b) => writeFileSync(p, b, { flag: "wx" }),
           home: homedir(),
           now: Date.now,
-          color: !process.env.NO_COLOR && process.env.TERM !== "dumb",
+          look: lookFromEnv(process.env),
         }, new URL(cfg.baseUrl).host);
       } finally {
         term.close();

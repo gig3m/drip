@@ -21,6 +21,22 @@ describe("DripClient", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
     await expect(new DripClient({ baseUrl: "https://h" }).delete("x")).rejects.toMatchObject({ status: 404 });
   });
+  it("setTtl sends PATCH /f/:id?ttl= with the bearer header and returns the item", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...OK, created_at: OK.expires_at }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await new DripClient({ baseUrl: "https://h", token: "t0k" }).setTtl("a b", "3d");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://h/f/a%20b?ttl=3d");
+    expect(init.method).toBe("PATCH");
+    expect(init.headers.authorization).toBe("Bearer t0k");
+    expect(r.id).toBe("abc");
+  });
+
+  it("setTtl throws DripError carrying the status", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+    await expect(new DripClient({ baseUrl: "https://h" }).setTtl("x", "1h")).rejects.toMatchObject({ status: 404 });
+  });
+
   it("uploadBytes posts multipart and returns the single result", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify(OK), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

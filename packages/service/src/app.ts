@@ -83,13 +83,22 @@ export function createApp(store: Store, config: Config): Hono {
     });
   };
 
+  const toListItem = (m: FileMeta) => ({ ...toResult(m), created_at: new Date(m.created_at).toISOString() });
+
   app.get("/files", (c) => {
     const limit = Number(c.req.query("limit"));
-    const items = store.list(Number.isFinite(limit) ? limit : 20).map((m) => ({
-      ...toResult(m),
-      created_at: new Date(m.created_at).toISOString(),
-    }));
-    return c.json(items);
+    return c.json(store.list(Number.isFinite(limit) ? limit : 20).map(toListItem));
+  });
+
+  // Re-arm a drip: it now expires `ttl` from now (capped like uploads).
+  app.patch("/f/:id", (c) => {
+    if (!requireToken(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401);
+    let ttlMs: number;
+    try { ttlMs = Math.min(parseDuration(c.req.query("ttl") ?? ""), config.maxTtlMs); }
+    catch { return c.json({ error: "invalid ttl" }, 400); }
+    if (ttlMs <= 0) return c.json({ error: "invalid ttl" }, 400);
+    const meta = store.setExpiry(c.req.param("id"), ttlMs);
+    return meta ? c.json(toListItem(meta)) : c.json({ error: "not found" }, 404);
   });
 
   app.get("/f/:id/:name", serveFile);
