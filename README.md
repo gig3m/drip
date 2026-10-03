@@ -2,7 +2,7 @@
 
 Push a screenshot or file from your laptop to a small self-hosted server and get back a short, auto-expiring URL that a coding agent on another machine can fetch.
 
-![drip tui: recent drips with their size and time left, and the selected one's details](docs/tui.png)
+![drip tui: recent drips grouped by when they arrived, with their size and time left, and the selected one's details and a QR code of its URL](docs/tui.png)
 
 ## Why
 
